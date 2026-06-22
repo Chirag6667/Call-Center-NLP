@@ -13,6 +13,8 @@ from keybert import KeyBERT
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.documents import Document
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, pipeline
+
 # Page config
 st.set_page_config(
     page_title="Call Center NLP Dashboard",
@@ -33,11 +35,16 @@ def load_sentiment_model():
         model="distilbert-base-uncased-finetuned-sst-2-english"
     )
 
+
 @st.cache_resource
 def load_summarizer():
+    model_name = "facebook/bart-large-cnn"
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
     return pipeline(
-        "summarization",
-        model="facebook/bart-large-cnn"
+        task="summarization",
+        model=model,
+        tokenizer=tokenizer
     )
 
 @st.cache_resource
