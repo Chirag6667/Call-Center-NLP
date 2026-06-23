@@ -8,7 +8,6 @@ import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
-from transformers import pipeline
 from keybert import KeyBERT
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
@@ -260,7 +259,7 @@ elif tab_selection == "🔍 Analyze a Call":
 
                 st.subheader("🔑 Keywords")
                 for kw in keyword_list:
-                    st.badge(kw)
+                    st.markdown(f"\{kw}`")`
 
             with col2:
                 st.subheader("🔒 PII Redacted Version")
