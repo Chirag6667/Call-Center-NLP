@@ -259,7 +259,7 @@ elif tab_selection == "🔍 Analyze a Call":
 
                 st.subheader("🔑 Keywords")
                 for kw in keyword_list:
-                    st.markdown(f"\{kw}`")`
+                    st.markdown(f"`{kw}`")
 
             with col2:
                 st.subheader("🔒 PII Redacted Version")
