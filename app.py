@@ -14,15 +14,14 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, pipeline
 
-# Page config
+# ── PAGE CONFIG ────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Call Center NLP Dashboard",
     page_icon="📞",
     layout="wide"
 )
 
-# ─── LOAD MODELS 
-
+# ── LOAD MODELS (cached so they never reload between tab switches) ─────────────
 @st.cache_resource
 def load_spacy():
     return spacy.load('en_core_web_sm')
@@ -34,12 +33,11 @@ def load_sentiment_model():
         model="distilbert-base-uncased-finetuned-sst-2-english"
     )
 
-
 @st.cache_resource
 def load_summarizer():
     model_name = "facebook/bart-large-cnn"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+    tokenizer  = AutoTokenizer.from_pretrained(model_name)
+    model      = AutoModelForSeq2SeqLM.from_pretrained(model_name)
     return pipeline(
         task="summarization",
         model=model,
@@ -64,67 +62,83 @@ def load_qa_pipeline():
         model="google/flan-t5-base"
     )
 
-@st.cache_data
-def load_data():
-    return pd.read_csv('processed_calls.csv')
-
-# ─── BUILD RAG FROM CSV 
-
+# ── BUILD RAG IN-MEMORY FROM ANY DATAFRAME ────────────────────────────────────
+# We pass a tuple of tuples (hashable) so Streamlit can cache it properly.
 @st.cache_resource
-def build_rag_from_csv():
+def build_rag(_docs_tuple):
     """
-    Builds a ChromaDB vector store in-memory from processed_calls.csv.
-    Runs once on first load, cached for the session.
+    Accepts a tuple of (transcript, name, call_type, sentiment, summary) tuples.
+    Builds an in-memory ChromaDB vector store — no persist_directory needed.
     """
-    df = pd.read_csv('processed_calls.csv')
-
-    # Build LangChain Document objects from each transcript row
     docs = []
-    for _, row in df.iterrows():
-        content = str(row.get('Transcript', ''))
-        metadata = {
-            'customer': str(row.get('Name', 'Unknown')),
-            'type':     str(row.get('Type', 'Unknown')),
-            'sentiment':str(row.get('Sentiment', 'Unknown')),
-            'summary':  str(row.get('Summary', ''))
-        }
-        docs.append(Document(page_content=content, metadata=metadata))
-
-    # Embed and store in-memory ChromaDB (no persist_directory)
+    for transcript, name, call_type, sentiment, summary in _docs_tuple:
+        docs.append(Document(
+            page_content=str(transcript),
+            metadata={
+                "customer":  str(name),
+                "type":      str(call_type),
+                "sentiment": str(sentiment),
+                "summary":   str(summary)
+            }
+        ))
     embeddings = HuggingFaceEmbeddings(
         model_name="sentence-transformers/all-MiniLM-L6-v2"
     )
-    vectordb = Chroma.from_documents(
-        documents=docs,
-        embedding=embeddings
-        
-    )
-    return vectordb
+    return Chroma.from_documents(documents=docs, embedding=embeddings)
 
-#  HEADER 
+# ── DATA LOADING ──────────────────────────────────────────────────────────────
+@st.cache_data
+def load_default_data():
+    # Fallback: ship your processed CSV with the repo
+    return pd.read_csv('processed_calls.csv')
 
+# ── HEADER ────────────────────────────────────────────────────────────────────
 st.title("📞 Call Center NLP Dashboard")
 st.markdown("**End-to-end NLP pipeline for call center transcript analysis**")
 st.markdown("---")
 
-#  SIDEBAR 
+# ── FILE UPLOADER ─────────────────────────────────────────────────────────────
+st.sidebar.title("📂 Data Source")
+uploaded_file = st.sidebar.file_uploader(
+    "Upload your own call CSV",
+    type=["csv"],
+    help="CSV must have at least a 'Transcript' column. Optional: Name, Type, Sentiment, Summary."
+)
 
+if uploaded_file is not None:
+    df = pd.read_csv(uploaded_file)
+    st.sidebar.success(f"✅ Loaded {len(df)} rows from your file")
+else:
+    df = load_default_data()
+    st.sidebar.info("Using default dataset (20 calls). Upload your own CSV above.")
+
+# Ensure required columns exist with safe fallbacks
+for col, default in [("Name","Unknown"), ("Type","Unknown"),
+                     ("Sentiment","Unknown"), ("Summary",""),
+                     ("Predicted_Topic",""), ("Predicted_Intent","")]:
+    if col not in df.columns:
+        df[col] = default
+
+if "Transcript" not in df.columns:
+    st.error("❌ Your CSV must have a 'Transcript' column.")
+    st.stop()
+
+# ── SIDEBAR NAVIGATION ────────────────────────────────────────────────────────
+st.sidebar.markdown("---")
 st.sidebar.title("Navigation")
 tab_selection = st.sidebar.radio(
     "Choose a section:",
-    [
-        "📊 Overview & EDA",
-        "🔍 Analyze a Call",
-        "🤖 RAG Assistant",
-        "🗂️ Cluster Explorer"
-    ]
+    ["📊 Overview & EDA",
+     "🔍 Analyze a Call",
+     "🤖 RAG Assistant",
+     "🗂️ Cluster Explorer"]
 )
 
-#  OVERVIEW & EDA 
-
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 1 — OVERVIEW & EDA
+# ══════════════════════════════════════════════════════════════════════════════
 if tab_selection == "📊 Overview & EDA":
     st.header("📊 Dataset Overview")
-    df = load_data()
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Calls", len(df))
@@ -142,15 +156,13 @@ if tab_selection == "📊 Overview & EDA":
         st.subheader("Sentiment Distribution")
         sentiment_counts = df['Sentiment'].value_counts()
         fig, ax = plt.subplots()
-        ax.bar(
-            sentiment_counts.index,
-            sentiment_counts.values,
-            color=['green', 'blue', 'red', 'orange', 'purple']
-        )
+        colors = plt.cm.Set2.colors[:len(sentiment_counts)]
+        ax.bar(sentiment_counts.index, sentiment_counts.values, color=colors)
         ax.set_xlabel("Sentiment")
         ax.set_ylabel("Count")
         plt.xticks(rotation=45)
         st.pyplot(fig)
+        plt.close()
 
     with col2:
         st.subheader("Call Type Distribution")
@@ -158,17 +170,19 @@ if tab_selection == "📊 Overview & EDA":
         fig, ax = plt.subplots()
         ax.pie(type_counts.values, labels=type_counts.index, autopct='%1.1f%%')
         st.pyplot(fig)
+        plt.close()
 
     st.markdown("---")
     st.subheader("Raw Data")
-    st.dataframe(
-        df[['Name', 'Type', 'Sentiment',
-            'Predicted_Topic', 'Predicted_Intent', 'Summary']]
-        .style.highlight_max(axis=0)
-    )
 
-# ANALYZE A SINGLE CALL
+    display_cols = [c for c in ['Name','Type','Sentiment',
+                                 'Predicted_Topic','Predicted_Intent','Summary']
+                    if c in df.columns]
+    st.dataframe(df[display_cols], use_container_width=True)
 
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 2 — ANALYZE A SINGLE CALL
+# ══════════════════════════════════════════════════════════════════════════════
 elif tab_selection == "🔍 Analyze a Call":
     st.header("🔍 Analyze a Single Transcript")
     st.markdown("Paste any call transcript below to run the full NLP pipeline on it.")
@@ -189,14 +203,13 @@ elif tab_selection == "🔍 Analyze a Call":
         if user_transcript.strip() == "":
             st.warning("Please enter a transcript first.")
         else:
-            st.markdown("---")
             with st.spinner("Running NLP pipeline..."):
 
                 # 1. PII Redaction
-                doc = nlp(user_transcript)
+                doc      = nlp(user_transcript)
                 redacted = user_transcript
                 for ent in doc.ents:
-                    if ent.label_ in ['PERSON']:
+                    if ent.label_ == 'PERSON':
                         redacted = redacted.replace(ent.text, '[CUSTOMER_NAME]')
                 redacted = re.sub(r'\b\d{6}\b', '[ORDER_NUMBER]', redacted)
 
@@ -215,28 +228,24 @@ elif tab_selection == "🔍 Analyze a Call":
                     summary_result = "Transcript too short to summarize."
 
                 # 4. Topic (zero-shot)
-                topic_labels = [
-                    'product inquiry', 'complaint',
-                    'technical issue', 'compliment', 'order placement'
-                ]
+                topic_labels = ['product inquiry','complaint',
+                                'technical issue','compliment','order placement']
                 topic_result = topic_classifier(
                     user_transcript[:512],
                     candidate_labels=topic_labels
                 )['labels'][0]
 
                 # 5. Intent (zero-shot)
-                intent_labels = [
-                    'get information', 'file a complaint',
-                    'request refund', 'cancel order',
-                    'get technical support', 'give positive feedback'
-                ]
+                intent_labels = ['get information','file a complaint',
+                                 'request refund','cancel order',
+                                 'get technical support','give positive feedback']
                 intent_result = topic_classifier(
                     user_transcript[:512],
                     candidate_labels=intent_labels
                 )['labels'][0]
 
                 # 6. Keywords
-                keywords    = kw_model.extract_keywords(
+                keywords     = kw_model.extract_keywords(
                     user_transcript,
                     keyphrase_ngram_range=(1, 2),
                     stop_words='english',
@@ -244,46 +253,83 @@ elif tab_selection == "🔍 Analyze a Call":
                 )
                 keyword_list = [kw[0] for kw in keywords]
 
-            # Display results
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Sentiment", sentiment_result['label'])
-            col2.metric("Topic",     topic_result.title())
-            col3.metric("Intent",    intent_result.title())
+            # ── Store results in session_state so they don't vanish on rerun ──
+            st.session_state['analysis'] = {
+                'sentiment': sentiment_result,
+                'topic':     topic_result,
+                'intent':    intent_result,
+                'summary':   summary_result,
+                'keywords':  keyword_list,
+                'redacted':  redacted,
+                'entities':  [(ent.text, ent.label_) for ent in doc.ents]
+            }
 
-            st.markdown("---")
-            col1, col2 = st.columns(2)
+    # ── Display results if they exist in session_state ────────────────────────
+    if 'analysis' in st.session_state:
+        r = st.session_state['analysis']
 
-            with col1:
-                st.subheader("📝 Summary")
-                st.info(summary_result)
+        st.markdown("---")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Sentiment", r['sentiment']['label'])
+        col2.metric("Topic",     r['topic'].title())
+        col3.metric("Intent",    r['intent'].title())
 
-                st.subheader("🔑 Keywords")
-                for kw in keyword_list:
-                    st.markdown(f"`{kw}`")
+        st.markdown("---")
+        col1, col2 = st.columns(2)
 
-            with col2:
-                st.subheader("🔒 PII Redacted Version")
-                st.success(redacted)
+        with col1:
+            st.subheader("📝 Summary")
+            st.info(r['summary'])
 
-                st.subheader("🏷️ Named Entities Found")
-                for ent in doc.ents:
-                    st.write(f"**{ent.text}** → {ent.label_}")
+            st.subheader("🔑 Keywords")
+            # st.badge doesn't exist — use st.markdown with inline code
+            kw_html = " ".join(
+                f"<code style='background:#e8f4fd;padding:3px 8px;"
+                f"border-radius:4px;margin:2px;display:inline-block'>{kw}</code>"
+                for kw in r['keywords']
+            )
+            st.markdown(kw_html, unsafe_allow_html=True)
 
-#  RAG ASSISTANT
+        with col2:
+            st.subheader("🔒 PII Redacted Version")
+            st.success(r['redacted'])
 
+            st.subheader("🏷️ Named Entities Found")
+            if r['entities']:
+                for text, label in r['entities']:
+                    st.write(f"**{text}** → `{label}`")
+            else:
+                st.write("No named entities detected.")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 3 — RAG ASSISTANT
+# ══════════════════════════════════════════════════════════════════════════════
 elif tab_selection == "🤖 RAG Assistant":
     st.header("🤖 RAG Assistant")
-    st.markdown("Ask any question about your call center data.")
+    st.markdown(
+        "Ask questions about **your loaded call data**. "
+        "The assistant searches actual transcripts and generates an answer."
+    )
 
+    # Build RAG from whatever CSV is currently loaded
     with st.spinner("Building vector store from transcripts... (first load only)"):
-        vectordb   = build_rag_from_csv()
+        docs_tuple = tuple(
+            (
+                row.get('Transcript', ''),
+                row.get('Name', 'Unknown'),
+                row.get('Type', 'Unknown'),
+                row.get('Sentiment', 'Unknown'),
+                row.get('Summary', '')
+            )
+            for _, row in df.iterrows()
+        )
+        vectordb   = build_rag(docs_tuple)
 
     qa_pipeline = load_qa_pipeline()
 
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
 
-    # Suggested questions
     st.subheader("💡 Try these questions:")
     col1, col2, col3 = st.columns(3)
     if col1.button("What are common complaints?"):
@@ -302,8 +348,9 @@ elif tab_selection == "🤖 RAG Assistant":
         if question:
             with st.spinner("Searching transcripts..."):
                 relevant_docs = vectordb.similarity_search(question, k=3)
-                context = "\n\n".join([doc.page_content for doc in relevant_docs])
-
+                context       = "\n\n".join(
+                    [doc.page_content for doc in relevant_docs]
+                )
                 prompt = f"""Based on call center transcripts, answer briefly.
 Context: {context[:800]}
 Question: {question}
@@ -320,6 +367,8 @@ Answer:"""
                         for d in relevant_docs
                     ]
                 })
+            # Clear the suggested question after asking
+            st.session_state.current_q = ''
 
     for chat in reversed(st.session_state.chat_history):
         with st.container():
@@ -328,47 +377,60 @@ Answer:"""
             st.caption(f"Sources: {', '.join(chat['sources'])}")
             st.markdown("---")
 
-# CLUSTER EXPLORER 
-
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 4 — CLUSTER EXPLORER
+# ══════════════════════════════════════════════════════════════════════════════
 elif tab_selection == "🗂️ Cluster Explorer":
     st.header("🗂️ Customer Cluster Explorer")
-    df = load_data()
+    st.markdown(
+        "Transcripts are vectorized with TF-IDF, grouped into clusters "
+        "using K-Means, then visualized in 2D via PCA. "
+        "Works on whatever CSV you've uploaded."
+    )
 
-    vectorizer = TfidfVectorizer(stop_words='english', max_features=100)
-    X          = vectorizer.fit_transform(df['Transcript'])
-    kmeans     = KMeans(n_clusters=5, random_state=42, n_init=10)
+    n_clusters = st.slider(
+        "Number of clusters", min_value=2,
+        max_value=min(10, len(df)), value=min(5, len(df))
+    )
+
+    vectorizer    = TfidfVectorizer(stop_words='english', max_features=100)
+    X             = vectorizer.fit_transform(df['Transcript'])
+    kmeans        = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
     df['Cluster'] = kmeans.fit_predict(X)
-    pca        = PCA(n_components=2)
-    X_2d       = pca.fit_transform(X.toarray())
+    pca           = PCA(n_components=2)
+    X_2d          = pca.fit_transform(X.toarray())
 
-    st.subheader("Customer Call Clusters (PCA Visualization)")
-    colors = ['red', 'blue', 'green', 'orange', 'purple']
+    st.subheader("Call Clusters (PCA Visualization)")
+    colors = plt.cm.tab10.colors
     fig, ax = plt.subplots(figsize=(10, 6))
-    for cluster in range(5):
+    for cluster in range(n_clusters):
         mask = df['Cluster'] == cluster
         ax.scatter(
             X_2d[mask, 0], X_2d[mask, 1],
-            c=colors[cluster], label=f'Cluster {cluster}', s=100
+            c=[colors[cluster % 10]],
+            label=f'Cluster {cluster}',
+            s=120, alpha=0.8
         )
         for idx in df[mask].index:
-            ax.annotate(
-                df['Name'][idx].split()[0],
-                (X_2d[idx, 0], X_2d[idx, 1]),
-                fontsize=8
-            )
+            name = str(df['Name'].iloc[idx]).split()[0] if 'Name' in df.columns else str(idx)
+            ax.annotate(name, (X_2d[idx, 0], X_2d[idx, 1]), fontsize=8)
+
     ax.legend()
     ax.set_xlabel("PCA Component 1")
     ax.set_ylabel("PCA Component 2")
     st.pyplot(fig)
+    plt.close()
 
     st.markdown("---")
     selected_cluster = st.selectbox(
         "Select a cluster to explore:",
-        options=[0, 1, 2, 3, 4],
+        options=list(range(n_clusters)),
         format_func=lambda x: f"Cluster {x}"
     )
     cluster_df = df[df['Cluster'] == selected_cluster]
     st.subheader(f"Cluster {selected_cluster} — {len(cluster_df)} calls")
-    st.dataframe(
-        cluster_df[['Name', 'Type', 'Sentiment', 'Predicted_Topic', 'Summary']]
-    )
+
+    display_cols = [c for c in ['Name','Type','Sentiment',
+                                 'Predicted_Topic','Summary']
+                    if c in cluster_df.columns]
+    st.dataframe(cluster_df[display_cols], use_container_width=True)
