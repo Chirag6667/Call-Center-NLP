@@ -140,6 +140,10 @@ tab_selection = st.sidebar.radio(
 if tab_selection == "📊 Overview & EDA":
     st.header("📊 Dataset Overview")
 
+    if len(df) < 3:
+        st.warning("Please upload a CSV with at least 3 call transcripts to view charts.")
+        st.stop()
+
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Calls", len(df))
     col2.metric("Call Types", df['Type'].nunique())
@@ -183,6 +187,12 @@ if tab_selection == "📊 Overview & EDA":
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 2 — ANALYZE A SINGLE CALL
 # ══════════════════════════════════════════════════════════════════════════════
+def get_customer_name(transcript):
+    match = re.search(r'Customer\s*\(([^)]+)\)', transcript)
+    if match:
+        return match.group(1)
+    return None
+    
 elif tab_selection == "🔍 Analyze a Call":
     st.header("🔍 Analyze a Single Transcript")
     st.markdown("Paste any call transcript below to run the full NLP pipeline on it.")
@@ -208,11 +218,13 @@ elif tab_selection == "🔍 Analyze a Call":
                 # 1. PII Redaction
                 doc      = nlp(user_transcript)
                 redacted = user_transcript
-                for ent in doc.ents:
-                    if ent.label_ == 'PERSON':
-                        redacted = redacted.replace(ent.text, '[CUSTOMER_NAME]')
-                redacted = re.sub(r'\b\d{6}\b', '[ORDER_NUMBER]', redacted)
-
+                customer_name = get_customer_name(user_transcript)
+                   for ent in doc.ents:
+                       if ent.label_ == 'PERSON' and ent.text == customer_name:
+                           redacted = redacted.replace(ent.text, '[CUSTOMER_NAME]')
+                    redacted = re.sub(r'\b\d{6}\b', '[ORDER_NUMBER]', redacted)
+                    redacted = re.sub(r'\b\d{4}-\d{3}-[A-Z]\b', '[ACCOUNT_NUMBER]', redacted)
+                           
                 # 2. Sentiment
                 sentiment_result = sentiment_model(user_transcript[:512])[0]
 
@@ -388,6 +400,9 @@ elif tab_selection == "🗂️ Cluster Explorer":
         "Works on whatever CSV you've uploaded."
     )
 
+if len(df) < 10:
+    st.warning("Not enough data. Please upload a CSV with at least 10 call transcripts to use the Cluster Explorer.")
+else:
     n_clusters = st.slider(
         "Number of clusters", min_value=2,
         max_value=min(10, len(df)), value=min(5, len(df))
