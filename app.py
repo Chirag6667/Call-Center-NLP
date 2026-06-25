@@ -98,6 +98,12 @@ def get_customer_name(transcript):
         return match.group(1)
     return None
 
+def get_dataset_summary(df):
+    total      = len(df)
+    call_types = df['Type'].value_counts()
+    sentiments = df['Sentiment'].value_counts()
+    return f"Total calls: {total}\nCall Types: {call_types}\nSentiments: {sentiments}"
+
 # ── HEADER ────────────────────────────────────────────────────────────────────
 st.title("📞 Call Center NLP Dashboard")
 st.markdown("**End-to-end NLP pipeline for call center transcript analysis**")
@@ -363,7 +369,9 @@ elif tab_selection == "🤖 RAG Assistant":
                 context       = "\n\n".join(
                     [doc.page_content for doc in relevant_docs]
                 )
+                summary = get_dataset_summary(df)
                 prompt = f"""Based on call center transcripts, answer briefly.
+Dataset Summary: {summary}
 Context: {context[:800]}
 Question: {question}
 Answer:"""
