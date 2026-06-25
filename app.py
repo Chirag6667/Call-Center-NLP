@@ -219,11 +219,11 @@ elif tab_selection == "🔍 Analyze a Call":
                 doc      = nlp(user_transcript)
                 redacted = user_transcript
                 customer_name = get_customer_name(user_transcript)
-                   for ent in doc.ents:
-                       if ent.label_ == 'PERSON' and ent.text == customer_name:
-                           redacted = redacted.replace(ent.text, '[CUSTOMER_NAME]')
-                    redacted = re.sub(r'\b\d{6}\b', '[ORDER_NUMBER]', redacted)
-                    redacted = re.sub(r'\b\d{4}-\d{3}-[A-Z]\b', '[ACCOUNT_NUMBER]', redacted)
+                for ent in doc.ents:
+                    if ent.label_ == 'PERSON' and ent.text == customer_name:
+                        redacted = redacted.replace(ent.text, '[CUSTOMER_NAME]')
+                redacted = re.sub(r'\b\d{6}\b', '[ORDER_NUMBER]', redacted)
+                redacted = re.sub(r'\b\d{4}-\d{3}-[A-Z]\b', '[ACCOUNT_NUMBER]', redacted)
                            
                 # 2. Sentiment
                 sentiment_result = sentiment_model(user_transcript[:512])[0]
