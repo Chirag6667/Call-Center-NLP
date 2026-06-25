@@ -91,6 +91,12 @@ def build_rag(_docs_tuple):
 def load_default_data():
     # Fallback: ship your processed CSV with the repo
     return pd.read_csv('processed_calls.csv')
+    
+def get_customer_name(transcript):
+    match = re.search(r'Customer\s*\(([^)]+)\)', transcript)
+    if match:
+        return match.group(1)
+    return None
 
 # ── HEADER ────────────────────────────────────────────────────────────────────
 st.title("📞 Call Center NLP Dashboard")
@@ -187,12 +193,6 @@ if tab_selection == "📊 Overview & EDA":
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 2 — ANALYZE A SINGLE CALL
 # ══════════════════════════════════════════════════════════════════════════════
-def get_customer_name(transcript):
-    match = re.search(r'Customer\s*\(([^)]+)\)', transcript)
-    if match:
-        return match.group(1)
-    return None
-    
 elif tab_selection == "🔍 Analyze a Call":
     st.header("🔍 Analyze a Single Transcript")
     st.markdown("Paste any call transcript below to run the full NLP pipeline on it.")
