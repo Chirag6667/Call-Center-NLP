@@ -370,6 +370,7 @@ elif tab_selection == "🤖 RAG Assistant":
                     [doc.page_content for doc in relevant_docs]
                 )
                 summary = get_dataset_summary(df)
+                st.write(summary)
                 prompt = f"""Based on call center transcripts, answer briefly.
 Dataset Summary: {summary}
 Context: {context[:800]}
