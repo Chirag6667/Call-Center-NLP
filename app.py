@@ -317,6 +317,7 @@ elif tab_selection == "🔍 Analyze a Call":
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 3 — RAG ASSISTANT
 # ══════════════════════════════════════════════════════════════════════════════
+st.write("Key found:", "GROQ_API_KEY" in st.secrets)
 elif tab_selection == "🤖 RAG Assistant":
     st.header("🤖 RAG Assistant")
     st.markdown(
