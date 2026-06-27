@@ -370,13 +370,17 @@ Question: {question}
 Answer:"""
                 st.write("Key found:", "GROQ_API_KEY" in st.secrets)
 
-                client = Groq(api_key=st.secrets["GROQ_API_KEY"])
-                response = client.chat.completions.create(
-                    model = "llama=3.3-70b-versatile",
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=200
-                )
-                answer = response.choices[0].message.content
+                try:
+                    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+                    response = client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=[{"role": "user", "content": prompt}],
+                        max_tokens=200
+                    )
+                    answer = response.choices[0].message.content
+                except Exception as e:
+                    st.error(f"Groq error: {str(e)}")
+                    answer = "Error getting response"
 
                 st.session_state.chat_history.append({
                     'question': question,
