@@ -317,7 +317,6 @@ elif tab_selection == "🔍 Analyze a Call":
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 3 — RAG ASSISTANT
 # ══════════════════════════════════════════════════════════════════════════════
-st.write("Key found:", "GROQ_API_KEY" in st.secrets)
 elif tab_selection == "🤖 RAG Assistant":
     st.header("🤖 RAG Assistant")
     st.markdown(
@@ -369,6 +368,8 @@ Dataset Summary: {summary}
 Context: {context[:800]}
 Question: {question}
 Answer:"""
+                st.write("Key found:", "GROQ_API_KEY" in st.secrets)
+
                 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
                 response = client.chat.completions.create(
                     model = "llama=3.3-70b-versatile",
