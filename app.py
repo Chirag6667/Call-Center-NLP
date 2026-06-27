@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import spacy
 import re
+from groq import Groq
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
@@ -55,12 +56,6 @@ def load_topic_classifier():
 def load_keybert():
     return KeyBERT()
 
-@st.cache_resource
-def load_qa_pipeline():
-    return pipeline(
-        "text2text-generation",
-        model="google/flan-t5-base"
-    )
 
 # ── BUILD RAG IN-MEMORY FROM ANY DATAFRAME ────────────────────────────────────
 # We pass a tuple of tuples (hashable) so Streamlit can cache it properly.
@@ -343,8 +338,6 @@ elif tab_selection == "🤖 RAG Assistant":
         )
         vectordb   = build_rag(docs_tuple)
 
-    qa_pipeline = load_qa_pipeline()
-
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
 
@@ -375,9 +368,13 @@ Dataset Summary: {summary}
 Context: {context[:800]}
 Question: {question}
 Answer:"""
-                answer = qa_pipeline(
-                    prompt, max_length=100, do_sample=False
-                )[0]['generated_text']
+                client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+                response = client.chat.completions.create(
+                    model = "llama=3.3-70b-versatile",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=200
+                )
+                answer = response.choices[0].message.content
 
                 st.session_state.chat_history.append({
                     'question': question,
